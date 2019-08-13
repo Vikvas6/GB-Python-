@@ -2,6 +2,7 @@ import socket
 import yaml
 from argparse import ArgumentParser
 import json
+from datetime import datetime
 
 config = {
     'addr': '127.0.0.1',
@@ -46,14 +47,23 @@ Code    Data    Meaning
 '''
 def create_presence_msg(online=True):
     if online:
-        code = 1
+        action = 'presence.online'
     else:
-        code = 2
-    return {'code': code, 'data': config.get('user')}
+        action = 'presence.offline'
+    return {
+        'code': 200,
+        'data': config.get('user'),
+        'action': action,
+        'time': datetime.now().timestamp()
+    }
 
-def create_msg():
-    data = input('Enter data to send: ')
-    return {'code': 3, 'data': data}
+def create_msg(action, data):
+    #data = input('Enter data to send: ')
+    return {
+        'data': data,
+        'action': action,
+        'time': datetime.now().timestamp()
+    }
 
 def send_msg(sock, data):
     sock.send(json.dumps(data).encode())
@@ -63,24 +73,27 @@ def get_response(sock):
 
 def parse_response(resp):
     resp_dict = json.loads(resp)
-    print(resp_dict.get('data'))
+    print(resp_dict)
 
 
 if __name__ == '__main__':
     try:
-        sock = socket.socket()
-        sock.connect((config.get('addr'), config.get('port')))
+        while True:
+            sock = socket.socket()
+            sock.connect((config.get('addr'), config.get('port')))
 
-        print('Client was started')
+            print('Client was started')
 
-        # send_msg(sock, create_presence_msg())
-        # print('Present message was sent')
-        # print(f'Present message response: {get_response(sock)}')
+            # send_msg(sock, create_presence_msg())
+            # print('Present message was sent')
+            # print(f'Present message response: {get_response(sock)}')
 
-        send_msg(sock, create_msg())
-        parse_response(get_response(sock))
+            action  = input('Enter action to send: ')
+            data = input('Enter data to send: ')
+            send_msg(sock, create_msg(action, data))
+            parse_response(get_response(sock))
 
-        sock.close()
+            sock.close()
     except KeyboardInterrupt:
-        send_msg(sock, create_presence_msg(False))
+        #send_msg(sock, create_presence_msg(False))
         print('Client shutdown')
