@@ -7,6 +7,7 @@ def validate_request(request):
         return False
 def make_response(code, request_msg, data):
     response_msg = {
+        'action': request_msg.get('action'),
         'code': code,
         'data': data,
         'time': datetime.now().timestamp()
