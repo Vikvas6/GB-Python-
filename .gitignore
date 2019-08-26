@@ -1,1 +1,6 @@
 *.pyc
+*.h
+venv/Lib/*
+venv/Include/*
+venv/tcl/*
+venv/Scripts/*

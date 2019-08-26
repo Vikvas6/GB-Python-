@@ -2,6 +2,7 @@ import socket
 import yaml
 from argparse import ArgumentParser
 import json
+import logging
 
 from resolvers import resolve
 from protocol import validate_request, make_response
@@ -41,6 +42,16 @@ if args.addr:
 if args.port:
     config['port'] = args.port
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=(
+        logging.FileHandler('server.log'),
+        logging.StreamHandler()
+    )
+)
+
+
 def recieve_msg(client):
     return json.loads(client.recv(config.get('buffersize')).decode())
 
@@ -48,17 +59,19 @@ def recieve_msg(client):
 def send_msg(sock, data):
     sock.send(json.dumps(data).encode())
 
+
 try:
     sock = socket.socket()
     sock.bind((config.get('addr'), config.get('port')))
     sock.listen(5)
 
-    print(f'Server started on {config.get("addr")}:{config.get("port")}')
+    logging.info(
+        f'Server started on {config.get("addr")}:{config.get("port")}')
 
     while True:
         client, address = sock.accept()
         client_host, client_port = address
-        print(f'Client was detected on {client_host}:{client_port}')
+        logging.info(f'Client was detected on {client_host}:{client_port}')
 
         request = recieve_msg(client)
 
@@ -68,16 +81,21 @@ try:
             if controller:
                 try:
                     response = controller(request)
-                    print(f'Client {client_host}:{client_port} sent message {request.get("data")}')
+                    logging.debug(
+                        f'Client {client_host}:{client_port} sent message {request.get("data")}')
                 except Exception as err:
-                    response = make_response(500, request, f'Internal server error')
-                    print(f'Exception - {err}')
+                    response = make_response(
+                        500, request, f'Internal server error')
+                    logging.critical(f'Exception - {err}')
             else:
-                response = make_response(404, request, f'Action {action} not implemented')
-                print(f'Client {client_host}:{client_port} sent action {action}')
+                response = make_response(
+                    404, request, f'Action {action} not implemented')
+                logging.error(
+                    f'Client {client_host}:{client_port} sent action {action}')
         else:
             response = make_response(400, request, 'Wrong request')
-            print(f'Client {client_host}:{client_port} sent wrong request')
+            logging.error(
+                f'Client {client_host}:{client_port} sent wrong request')
         send_msg(client, response)
 
         client.close()
