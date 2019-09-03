@@ -3,8 +3,11 @@ import yaml
 from argparse import ArgumentParser
 import json
 import logging
+import select
+import threading
 
 from resolvers import resolve
+from handlers import handle_tcp_request
 from protocol import validate_request, make_response
 
 
@@ -51,53 +54,62 @@ logging.basicConfig(
     )
 )
 
+requests = []
+connections = []
 
-def recieve_msg(client):
-    return json.loads(client.recv(config.get('buffersize')).decode())
+
+def read(sock, connection, request, buffersize):
+    try:
+        bytes_request = sock.recv(buffersize)
+    except Exception:
+        connection.remove(sock)
+    else:
+        requests.append(bytes_request)
 
 
-def send_msg(sock, data):
-    sock.send(json.dumps(data).encode())
+def write(sock, connection, response):
+    try:
+        sock.send(response)
+    except Exception:
+        connection.remove(sock)
 
 
 try:
     sock = socket.socket()
     sock.bind((config.get('addr'), config.get('port')))
+    # sock.setblocking(False)
+    sock.settimeout(1)
     sock.listen(5)
 
     logging.info(
         f'Server started on {config.get("addr")}:{config.get("port")}')
 
     while True:
-        client, address = sock.accept()
-        client_host, client_port = address
-        logging.info(f'Client was detected on {client_host}:{client_port}')
+        try:
+            client, address = sock.accept()
+            client_host, client_port = address
+            logging.info(f'Client was detected on {client_host}:{client_port}')
+            connections.append(client)
+        except:
+            pass
 
-        request = recieve_msg(client)
+        if connections:
+            rlist, wlist, xlist = select.select(connections, connections, connections, 0)
 
-        if validate_request(request):
-            action = request.get('action')
-            controller = resolve(action)
-            if controller:
-                try:
-                    response = controller(request)
-                    logging.debug(
-                        f'Client {client_host}:{client_port} sent message {request.get("data")}')
-                except Exception as err:
-                    response = make_response(
-                        500, request, f'Internal server error')
-                    logging.critical(f'Exception - {err}')
-            else:
-                response = make_response(
-                    404, request, f'Action {action} not implemented')
-                logging.error(
-                    f'Client {client_host}:{client_port} sent action {action}')
-        else:
-            response = make_response(400, request, 'Wrong request')
-            logging.error(
-                f'Client {client_host}:{client_port} sent wrong request')
-        send_msg(client, response)
+            for read_client in rlist:
+                read_thread = threading.Thread(daemon=True, target=read, args=(
+                    read_client, connections, requests, config.get('buffersize')
+                ))
+                read_thread.start()
 
-        client.close()
+            if requests:
+                bytes_request = requests.pop()
+                bytes_response = handle_tcp_request(bytes_request)
+            
+                for write_client in wlist:
+                    write_thread = threading.Thread(target=write, args=(
+                        write_client, connections, bytes_response
+                    ))
+                    write_thread.start()
 except KeyboardInterrupt:
     print('Server shutdown')

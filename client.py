@@ -1,8 +1,13 @@
 import socket
 import yaml
+import zlib
 from argparse import ArgumentParser
 import json
 from datetime import datetime
+import threading
+
+READ_MODE = 'read'
+WRITE_MODE = 'write'
 
 config = {
     'addr': '127.0.0.1',
@@ -66,34 +71,42 @@ def create_msg(action, data):
     }
 
 def send_msg(sock, data):
-    sock.send(json.dumps(data).encode())
+    string_request = json.dumps(data)
+    bytes_request = zlib.compress(string_request.encode())
 
-def get_response(sock):
-    return sock.recv(config.get('buffersize')).decode()
+    sock.send(bytes_request)
+
+def get_response(sock, buffersize):
+    compressed_response = sock.recv(buffersize)
+    bytes_response = zlib.decompress(compressed_response)
+    return bytes_response.decode()
 
 def parse_response(resp):
-    resp_dict = json.loads(resp)
-    print(resp_dict)
+    print(resp)
+
+
+def read(sock, buffersize):
+    while True:
+        parse_response(get_response(sock, buffersize))
 
 
 if __name__ == '__main__':
     try:
+        sock = socket.socket()
+        sock.connect((config.get('addr'), config.get('port')))
+
+        print('Client was started')
+
+        thread = threading.Thread(target=read, args=(sock, config.get('buffersize')))
+        thread.start()
+
         while True:
-            sock = socket.socket()
-            sock.connect((config.get('addr'), config.get('port')))
-
-            print('Client was started')
-
-            # send_msg(sock, create_presence_msg())
-            # print('Present message was sent')
-            # print(f'Present message response: {get_response(sock)}')
-
             action  = input('Enter action to send: ')
             data = input('Enter data to send: ')
             send_msg(sock, create_msg(action, data))
-            parse_response(get_response(sock))
+            print('Client sent data')
+                
 
-            sock.close()
     except KeyboardInterrupt:
         #send_msg(sock, create_presence_msg(False))
         print('Client shutdown')
